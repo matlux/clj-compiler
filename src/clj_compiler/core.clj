@@ -54,26 +54,58 @@
 (with-open [out (FileOutputStream. file)]
   (.write out byte-array)))
 
-(with-classwriter
-  (do
-    (.visit *cw* Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_FINAL) "user$f2" nil "clojure/lang/AFunction" nil)
-    (let [clinitgen (new GeneratorAdapter (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC)
-                         (Method/getMethod "void <clinit> ()")
-                         nil
-                         nil
-                         *cw*)]
-      (.returnValue clinitgen)
-      (.endMethod clinitgen))
+(let [superName "clojure/lang/AFunction"] (with-classwriter
+   (do
+     (.visit *cw* Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_FINAL) "user$f2" nil superName nil)
+     (let [clinitgen (new GeneratorAdapter (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC)
+                          (Method/getMethod "void <clinit> ()")
+                          nil
+                          nil
+                          *cw*)]
+       (.returnValue clinitgen)
+       (.endMethod clinitgen))
+     (let [ctorgen (new GeneratorAdapter Opcodes/ACC_PUBLIC
+                        (Method. "<init>" Type/VOID_TYPE (make-array Type 0))
+                        nil
+                        nil
+                        *cw*)
+           start (.newLabel ctorgen)
+           end (.newLabel ctorgen)
+           ]
+       ;(.visitCode ctorgen)
+       (.visitLabel ctorgen start)
+       (.loadThis ctorgen)
+       (.invokeConstructor ctorgen (Type/getObjectType superName) (Method/getMethod "void <init>()"))
+       ;(.visitCode ctorgen end)
+       (.returnValue ctorgen)
+       (.endMethod ctorgen))
+     (let [
+           object-type (Type/getType (.getClass java.lang.Object))
+           gen (new GeneratorAdapter Opcodes/ACC_PUBLIC
+                        (Method. "invoke" object-type (into-array Type (list object-type)))
+                        nil
+                        nil
+                        *cw*)
+           looplabel (.mark gen)
+           method-desc "add(Ljava/lang/Object;J)Ljava/lang/Number;"
+           ]
 
-    (.visitEnd *cw*)
-    (write-bin-file "./user$f2.class" (.toByteArray *cw*))))
+       ;(.visitCode gen)
+       (.loadArg gen 0)
+       (.visitInsn gen Opcodes/ACONST_NULL)
+       (.storeArg gen 0)
+       (.push gen 2)
+       ;(.invokeStatic gen (Type/getType (.getClass clojure.lang.Numbers)) (new Method "add" (Type/getReturnType method-desc) (Type/getArgumentTypes method-desc)))
+       (let [end (.mark gen)]
+         (.visitLocalVariable gen "x" "Ljava/lang/Object;" nil looplabel end 1))
+
+       (.returnValue gen)
+       (.endMethod gen))
+     (.visitEnd *cw*)
+     (write-bin-file "./user$f2.class" (.toByteArray *cw*)))))
+
+
 
 (comment
-(let [ctorgen (new GeneratorAdapter Opcodes/ACC_PUBLIC
-                         (Method/getMethod "<init>")
-                         nil
-                         nil
-                         *cw*)]
-      (.returnValue ctorgen)
-      (.endMethod ctorgen))
+
   )
