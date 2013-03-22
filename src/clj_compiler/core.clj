@@ -54,7 +54,8 @@
 (with-open [out (FileOutputStream. file)]
   (.write out byte-array)))
 
-(let [superName "clojure/lang/AFunction"] (with-classwriter
+(defn generate-byte-code [ast]
+  (let [superName "clojure/lang/AFunction"] (with-classwriter
    (do
      (.visit *cw* Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_FINAL) "user$f2" nil superName nil)
      (let [clinitgen (new GeneratorAdapter (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC)
@@ -103,8 +104,14 @@
        (.endMethod gen))
      (.visitEnd *cw*)
      ;(write-bin-file "./user$f2.class" (.toByteArray *cw*))
-     (.toByteArray *cw*))))
+     (.toByteArray *cw*)))))
 
+(def source-txt "(fn* ([x] (+ x 2)))")
+(def classloader (.getContextClassLoader (Thread/currentThread)))
+
+(defn load-test-function [] (.defineClass classloader "user$f2" (generate-byte-code nil) source-txt))
+
+(defn run-test-function [] ((.newInstance (.loadClass classloader "user$f2")) 4))
 
 ;(first (into []  (Type/getArgumentTypes "(Ljava/lang/Object;J)Ljava/lang/Number;")))
 ;(new Method "add" (Type/getReturnType "(Ljava/lang/Object;J)Ljava/lang/Number;") (Type/getArgumentTypes "(Ljava/lang/Object;J)Ljava/lang/Number;"))
