@@ -6,6 +6,7 @@
 (import '[clojure.asm.commons Method])
 (import '[clojure.asm.commons GeneratorAdapter])
 (import '[clojure.asm Type])
+(import '[clojure.asm Label])
 
 (import 'java.io.FileOutputStream)
 
@@ -54,6 +55,8 @@
 (with-open [out (FileOutputStream. file)]
   (.write out byte-array)))
 
+(defn mark [mv] (let [label (new Label)] (.visitLabel mv label) label))
+
 (defn generate-byte-code [ast]
   (let [superName "clojure/lang/AFunction"] (with-classwriter
    (do
@@ -82,29 +85,28 @@
        (.endMethod ctorgen))
      (let [
            object-type (Type/getType java.lang.Object)
-           gen (new GeneratorAdapter Opcodes/ACC_PUBLIC
-                        (Method. "invoke" object-type (into-array Type (list object-type)))
-                        nil
-                        nil
-                        *cw*)
-           looplabel (.mark gen)
-           method-desc "(Ljava/lang/Object;J)Ljava/lang/Number;"
+           add-method-desc "(Ljava/lang/Object;J)Ljava/lang/Number;"
+           mv (.visitMethod *cw* Opcodes/ACC_PUBLIC "invoke" "(Ljava/lang/Object;)Ljava/lang/Object;" nil (into-array String '()))
+           _ (.visitCode mv)
+           looplabel (mark mv)
            ]
 
-       ;(.visitCode gen)
-       (.loadArg gen 0)
-       (.visitInsn gen Opcodes/ACONST_NULL)
-       (.storeArg gen 0)
-       (.push gen 2)
-       (.invokeStatic gen (Type/getType clojure.lang.Numbers) (new Method "add" (Type/getReturnType method-desc) (Type/getArgumentTypes method-desc)))
-       (let [end (.mark gen)]
-         (.visitLocalVariable gen "x" "Ljava/lang/Object;" nil looplabel end 1))
-
-       (.returnValue gen)
-       (.endMethod gen))
+       (.visitVarInsn mv (.getOpcode object-type Opcodes/ILOAD) 1)
+       (.visitInsn mv Opcodes/ACONST_NULL)
+       (.visitVarInsn mv (.getOpcode object-type Opcodes/ISTORE) 1)
+       (.visitLdcInsn mv (new Long 3))
+       (.visitMethodInsn mv Opcodes/INVOKESTATIC "clojure/lang/Numbers" "add" add-method-desc)
+       (let [end (mark mv)]
+         (.visitLocalVariable mv "this" "Ljava/lang/Object;" nil looplabel end 0)
+         (.visitLocalVariable mv "x" "Ljava/lang/Object;" nil looplabel end 1))
+       (.visitInsn mv (.getOpcode object-type Opcodes/IRETURN))
+       (.visitMaxs mv 0 0)
+       (.visitEnd mv))
      (.visitEnd *cw*)
-     ;(write-bin-file "./user$f2.class" (.toByteArray *cw*))
-     (.toByteArray *cw*)))))
+
+     (let [byte-code (.toByteArray *cw*)]
+       (write-bin-file "./user$f2.class" byte-code)
+       byte-code)))))
 
 (def source-txt "(fn* ([x] (+ x 2)))")
 (def classloader (.getContextClassLoader (Thread/currentThread)))
@@ -112,6 +114,9 @@
 (defn load-test-function [] (.defineClass classloader "user$f2" (generate-byte-code nil) source-txt))
 
 (defn run-test-function [] ((.newInstance (.loadClass classloader "user$f2")) 4))
+
+;(load-test-function)
+;(run-test-function)
 
 ;(first (into []  (Type/getArgumentTypes "(Ljava/lang/Object;J)Ljava/lang/Number;")))
 ;(new Method "add" (Type/getReturnType "(Ljava/lang/Object;J)Ljava/lang/Number;") (Type/getArgumentTypes "(Ljava/lang/Object;J)Ljava/lang/Number;"))
