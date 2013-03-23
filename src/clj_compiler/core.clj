@@ -120,6 +120,47 @@
        (write-bin-file "./user$f2.class" byte-code)
        byte-code)))))
 
+(def byte-code-ast {
+          :classname "user$f2"
+          :super "clojure/lang/AFunction"
+          :fields [
+                   {:name "const__0" :type "Lclojure/lang/Var;"}
+                   {:name "const__1" :type "Ljava/lang/Object;"}
+                   ]
+          :clinit [
+                   {:instruction :ldc :parameters ["clojure.core"]}
+                   {:instruction :ldc :parameters ["+"]}
+                   {:instruction :method :parameters [Opcodes/INVOKESTATIC "clojure/lang/RT" "var" "(Ljava/lang/String;Ljava/lang/String;)Lclojure/lang/Var;"]}
+                   {:instruction :type :parameters [Opcodes/CHECKCAST "clojure/lang/Var"]}
+                   {:instruction :field :parameters [Opcodes/PUTSTATIC "user$f2" "const__0" "Lclojure/lang/Var;"]}
+                   {:instruction :ldc :parameters [(new Long 2)]}
+                   {:instruction :method :parameters [Opcodes/INVOKESTATIC "java/lang/Long" "valueOf" "(J)Ljava/lang/Long;"]}
+                   {:instruction :field :parameters [Opcodes/PUTSTATIC "user$f2" "const__1" "Ljava/lang/Object;"]}
+                   {:instruction :instcode :parameters [(.getOpcode (Type/getType "V") Opcodes/IRETURN)]}
+                   ]
+          :init [
+                 {:instruction :var :parameters [Opcodes/ALOAD 0]}
+                 {:instruction :method :parameters [Opcodes/INVOKESPECIAL "clojure/lang/AFunction" "<init>" "()V"]}
+                 {:instruction :instcode :parameters [(.getOpcode (Type/getType "V") Opcodes/IRETURN)]}
+                 ]
+          :methods [
+                    {:name "invoke"
+                     :desc "(Ljava/lang/Object;)Ljava/lang/Object;"
+                     :parameters (into-array String '())
+                     :instructions [
+                                    {:instruction :var :parameters [(.getOpcode (Type/getType java.lang.Object) Opcodes/ILOAD) 1]}
+                                    {:instruction :instcode :parameters [Opcodes/ACONST_NULL]}
+                                    {:instruction :var :parameters [(.getOpcode (Type/getType java.lang.Object) Opcodes/ISTORE) 1]}
+                                    {:instruction :ldc :parameters [(new Long 2)]}
+                                    {:instruction :method :parameters [ Opcodes/INVOKESTATIC "clojure/lang/Numbers" "add" "(Ljava/lang/Object;J)Ljava/lang/Number;"]}
+                                    {:instruction :instcode :parameters [(.getOpcode (Type/getType java.lang.Object) Opcodes/IRETURN)]}
+                                    ]
+                     }
+
+                   ]
+
+          })
+
 (def source-txt "(fn* ([x] (+ x 2)))")
 (def classloader (.getContextClassLoader (Thread/currentThread)))
 
