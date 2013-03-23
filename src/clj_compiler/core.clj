@@ -61,28 +61,40 @@
   (let [superName "clojure/lang/AFunction"] (with-classwriter
    (do
      (.visit *cw* Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_FINAL) "user$f2" nil superName nil)
-     (let [clinitgen (new GeneratorAdapter (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC)
-                          (Method/getMethod "void <clinit> ()")
-                          nil
-                          nil
-                          *cw*)]
-       (.returnValue clinitgen)
-       (.endMethod clinitgen))
-     (let [ctorgen (new GeneratorAdapter Opcodes/ACC_PUBLIC
-                        (Method. "<init>" Type/VOID_TYPE (make-array Type 0))
-                        nil
-                        nil
-                        *cw*)
-           start (.newLabel ctorgen)
-           end (.newLabel ctorgen)
-           ]
-       ;(.visitCode ctorgen)
-       (.visitLabel ctorgen start)
-       (.loadThis ctorgen)
-       (.invokeConstructor ctorgen (Type/getObjectType superName) (Method/getMethod "void <init>()"))
-       ;(.visitCode ctorgen end)
-       (.returnValue ctorgen)
-       (.endMethod ctorgen))
+     ;(.visitSource *cw* "source" "smap")
+     (.visitField *cw* (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC Opcodes/ACC_FINAL) "const__0" "Lclojure/lang/Var;" nil nil)
+     (.visitField *cw* (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC Opcodes/ACC_FINAL) "const__1" "Ljava/lang/Object;" nil nil)
+
+     ;; class initialisation
+     (let [
+           mv (.visitMethod *cw* (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC) "<clinit>" "()V" nil nil)]
+       (.visitCode mv)
+       ;(.visitLineNumber line (mark mv))
+       (.visitLdcInsn mv "clojure.core")
+       (.visitLdcInsn mv "+")
+       (.visitMethodInsn mv Opcodes/INVOKESTATIC "clojure/lang/RT" "var" "(Ljava/lang/String;Ljava/lang/String;)Lclojure/lang/Var;")
+       (.visitTypeInsn mv Opcodes/CHECKCAST "clojure/lang/Var")
+       (.visitFieldInsn mv Opcodes/PUTSTATIC "user$f2" "const__0" "Lclojure/lang/Var;")
+       (.visitLdcInsn mv (new Long 2))
+       (.visitMethodInsn mv Opcodes/INVOKESTATIC "java/lang/Long" "valueOf" "(J)Ljava/lang/Long;")
+       (.visitFieldInsn mv Opcodes/PUTSTATIC "user$f2" "const__1" "Ljava/lang/Object;")
+       (.visitInsn mv (.getOpcode (Type/getType "V") Opcodes/IRETURN))
+       (.visitMaxs mv 0 0)
+       (.visitEnd mv))
+
+     ;; constructor
+     (let [
+           mv (.visitMethod *cw* Opcodes/ACC_PUBLIC "<init>" "()V" nil nil)]
+       (.visitCode mv)
+       ;(.visitLineNumber line (mark mv))
+       ;(.visitLabel)
+       (.visitVarInsn mv Opcodes/ALOAD 0)
+       (.visitMethodInsn mv Opcodes/INVOKESPECIAL "clojure/lang/AFunction" "<init>" "()V")
+       (.visitInsn mv (.getOpcode (Type/getType "V") Opcodes/IRETURN))
+       (.visitMaxs mv 0 0)
+       (.visitEnd mv))
+
+     ;; invoke method (function code)
      (let [
            object-type (Type/getType java.lang.Object)
            add-method-desc "(Ljava/lang/Object;J)Ljava/lang/Number;"
@@ -94,7 +106,7 @@
        (.visitVarInsn mv (.getOpcode object-type Opcodes/ILOAD) 1)
        (.visitInsn mv Opcodes/ACONST_NULL)
        (.visitVarInsn mv (.getOpcode object-type Opcodes/ISTORE) 1)
-       (.visitLdcInsn mv (new Long 3))
+       (.visitLdcInsn mv (new Long 2))
        (.visitMethodInsn mv Opcodes/INVOKESTATIC "clojure/lang/Numbers" "add" add-method-desc)
        (let [end (mark mv)]
          (.visitLocalVariable mv "this" "Ljava/lang/Object;" nil looplabel end 0)
