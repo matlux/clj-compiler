@@ -1,4 +1,3 @@
-
 (ns clj-compiler.core)
 
 (import '[clojure.asm ClassWriter])
