@@ -99,7 +99,7 @@
        (apply ((compiler-interpreter mv state) compiler-instruction) params)))))
 
 (defn generate-byte-code [ast]
-  (let [{classname :classname superName :super fields :fields methods :methods} ast
+  (let [{classname :classname superName :super fields :fields cinit :cinit init :init methods :methods} ast
         ] (with-classwriter
    (do
      (.visit *cw* Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_FINAL) classname nil superName nil)
@@ -133,9 +133,10 @@
        (.visitCode mv)
        ;(.visitLineNumber line (mark mv))
        ;(.visitLabel)
-       (.visitVarInsn mv Opcodes/ALOAD 0)
-       (.visitMethodInsn mv Opcodes/INVOKESPECIAL "clojure/lang/AFunction" "<init>" "()V")
-       (.visitInsn mv (.getOpcode (Type/getType "V") Opcodes/IRETURN))
+       (interpret mv init {})
+       ;(.visitVarInsn mv Opcodes/ALOAD 0)
+       ;(.visitMethodInsn mv Opcodes/INVOKESPECIAL "clojure/lang/AFunction" "<init>" "()V")
+       ;(.visitInsn mv (.getOpcode (Type/getType "V") Opcodes/IRETURN))
        (.visitMaxs mv 0 0)
        (.visitEnd mv))
 
