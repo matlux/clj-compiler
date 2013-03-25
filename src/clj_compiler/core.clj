@@ -75,6 +75,8 @@
                          :mark (fn [mv] ;(println "mark")
                                  (mark mv))
                          :localvar (fn [mv name desc signature start end index] (.visitLocalVariable mv name desc signature start end index))
+                         :type (fn [mv opcode type] (.visitTypeInsn mv opcode type))
+                         :field (fn [mv opcode owner name desc] (.visitFieldInsn mv opcode owner name desc))
 
                          })
 (defn compiler-interpreter [mv prevstate] {
@@ -91,17 +93,24 @@
 
 (defn resolve-labels [params state] (map (fn [v] (if (and (list? v) (= (first v) (symbol 'label))) (label (second v) state) v)) params))
 (defn interpret [mv instructions state]
-  ;(println "state=" state "instructions" instructions)
+  ;(println "state=" state "mv=" mv "instructions" instructions)
   (doall
    (for [{instruction :instruction compiler-instruction :compiler-instruction params :parameters} instructions]
      (if (nil? compiler-instruction)
        (apply (instruction-to-asm instruction) (cons mv (resolve-labels params state)))
        (apply ((compiler-interpreter mv state) compiler-instruction) params)))))
 
+(defn generate-method-byte-code [cw access name desc signature exceptions instructions]
+  (let [mv (.visitMethod cw access name desc signature exceptions)]
+    (.visitCode mv)
+    (interpret mv instructions {})
+    (.visitMaxs mv 0 0)
+    (.visitEnd mv)))
+
 (defn generate-byte-code [ast]
-  (let [{classname :classname superName :super fields :fields cinit :cinit init :init methods :methods} ast
-        ] (with-classwriter
-   (do
+  (let [{classname :classname superName :super fields :fields clinit :clinit init :init methods :methods} ast]
+   (with-classwriter
+    (do
      (.visit *cw* Opcodes/V1_5 (+ Opcodes/ACC_PUBLIC Opcodes/ACC_SUPER Opcodes/ACC_FINAL) classname nil superName nil)
      ;(.visitSource *cw* "source" "smap")
 
@@ -109,45 +118,17 @@
         (.visitField *cw* (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC Opcodes/ACC_FINAL) name type nil nil)))
 
      ;; class initialisation
-     (let [
-           mv (.visitMethod *cw* (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC) "<clinit>" "()V" nil nil)]
-
-       (.visitCode mv)
-
-       ;(.visitLineNumber line (mark mv))
-       (.visitLdcInsn mv "clojure.core")
-       (.visitLdcInsn mv "+")
-       (.visitMethodInsn mv Opcodes/INVOKESTATIC "clojure/lang/RT" "var" "(Ljava/lang/String;Ljava/lang/String;)Lclojure/lang/Var;")
-       (.visitTypeInsn mv Opcodes/CHECKCAST "clojure/lang/Var")
-       (.visitFieldInsn mv Opcodes/PUTSTATIC "user$f2" "const__0" "Lclojure/lang/Var;")
-       (.visitLdcInsn mv (new Long 2))
-       (.visitMethodInsn mv Opcodes/INVOKESTATIC "java/lang/Long" "valueOf" "(J)Ljava/lang/Long;")
-       (.visitFieldInsn mv Opcodes/PUTSTATIC "user$f2" "const__1" "Ljava/lang/Object;")
-       (.visitInsn mv (.getOpcode (Type/getType "V") Opcodes/IRETURN))
-       (.visitMaxs mv 0 0)
-       (.visitEnd mv))
+     (generate-method-byte-code *cw* (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC) "<clinit>" "()V" nil nil clinit)
 
      ;; constructor
-     (let [
-           mv (.visitMethod *cw* Opcodes/ACC_PUBLIC "<init>" "()V" nil nil)]
-       (.visitCode mv)
-       ;(.visitLineNumber line (mark mv))
-       ;(.visitLabel)
-       (interpret mv init {})
-       ;(.visitVarInsn mv Opcodes/ALOAD 0)
-       ;(.visitMethodInsn mv Opcodes/INVOKESPECIAL "clojure/lang/AFunction" "<init>" "()V")
-       ;(.visitInsn mv (.getOpcode (Type/getType "V") Opcodes/IRETURN))
-       (.visitMaxs mv 0 0)
-       (.visitEnd mv))
+     (generate-method-byte-code *cw* Opcodes/ACC_PUBLIC "<init>" "()V" nil nil init)
+
 
      ;; invoke method (function code)
      (doall
       (for [{name :name desc :desc exceptions :exceptions instructions :instructions} methods]
-        (let [mv (.visitMethod *cw* Opcodes/ACC_PUBLIC name desc nil exceptions)]
-          (.visitCode mv)
-          (interpret mv instructions {})
-          (.visitMaxs mv 0 0)
-          (.visitEnd mv))))
+        (generate-method-byte-code *cw* Opcodes/ACC_PUBLIC name desc nil exceptions instructions)
+        ))
      (.visitEnd *cw*)
 
      (let [byte-code (.toByteArray *cw*)]
@@ -157,6 +138,7 @@
 ; very basic regression testing:
                                         ;(def original (into [] (generate-byte-code byte-code-ast)))
                                         ;(= (into [] original) (into [] (generate-byte-code byte-code-ast)))
+
 
 (def byte-code-ast {
           :classname "user$f2"
@@ -207,7 +189,9 @@
 
                    ]
 
-          })
+                    })
+
+(into [] (generate-byte-code byte-code-ast))
 
 (def source-txt "(fn* ([x] (+ x 2)))")
 (def classloader (.getContextClassLoader (Thread/currentThread)))
