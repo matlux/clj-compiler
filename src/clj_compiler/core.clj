@@ -42,7 +42,7 @@
                (visitEnd [] (println "visitEnd"))
                (visitTypeInsn [opcode type] (println "visitTypeInsn" opcode type))
                (visitFieldInsn [opcode classname name type] (println "visitFieldInsn" opcode classname name type))
-
+               (toByteArray [] "BYTE_CODE_EXAMPLE")
 
                ))
 
@@ -67,43 +67,54 @@
 
 (def interpret)
 
-(def instruction-to-asm {
-                         :var (fn [mv opcode index] (.visitVarInsn mv opcode index))
-                         :instcode (fn [mv opcode] (.visitInsn mv opcode))
-                         :ldc (fn [mv value] (.visitLdcInsn mv value))
-                         :method (fn [mv opcode owner method-name method-desc] (.visitMethodInsn mv opcode owner method-name method-desc))
+(defn instruction-to-asm [state] {
+                         :var (fn [mv opcode index] (.visitVarInsn mv opcode index) state)
+                         :instcode (fn [mv opcode] (.visitInsn mv opcode) state)
+                         :ldc (fn [mv value] (.visitLdcInsn mv value) state)
+                         :method (fn [mv opcode owner method-name method-desc] (.visitMethodInsn mv opcode owner method-name method-desc) state)
                          :mark (fn [mv] ;(println "mark")
-                                 (mark mv))
-                         :localvar (fn [mv name desc signature start end index] (.visitLocalVariable mv name desc signature start end index))
-                         :type (fn [mv opcode type] (.visitTypeInsn mv opcode type))
-                         :field (fn [mv opcode owner name desc] (.visitFieldInsn mv opcode owner name desc))
+                                 (mark mv) state)
+                         :localvar (fn [mv name desc signature start end index] (.visitLocalVariable mv name desc signature start end index) state)
+                         :type (fn [mv opcode type] (.visitTypeInsn mv opcode type) state)
+                         :field (fn [mv opcode owner name desc] (.visitFieldInsn mv opcode owner name desc) state)
 
                          })
-(defn compiler-interpreter [mv prevstate] {
-                                           :let (fn [vars body]
-                                                  ;(println "let" vars)
-                                                  (let [state (into {} (map (fn [{var :var instruction :function}] [var (first (interpret mv [instruction] {}))]) vars))
-                                                                                          state (merge state prevstate)]
-                                                                            (interpret mv body state)
-                                                                            state nil
-                                                                  ))
+(defn compiler-interpreter [mv state] {
+
+                                           :label (fn [labelname]
+                                                    (let [found (get state labelname)]
+                                                      (if found (do (.visitLabel mv found) state) (let [newlabel (mark mv)] (merge state {labelname newlabel})))))
                                  })
+
 (defn label [s state] (get state s))
 
 
-(defn resolve-labels [params state] (map (fn [v] (if (and (list? v) (= (first v) (symbol 'label))) (label (second v) state) v)) params))
-(defn interpret [mv instructions state]
-  ;(println "state=" state "mv=" mv "instructions" instructions)
-  (doall
-   (for [{instruction :instruction compiler-instruction :compiler-instruction params :parameters} instructions]
-     (if (nil? compiler-instruction)
-       (apply (instruction-to-asm instruction) (cons mv (resolve-labels params state)))
-       (apply ((compiler-interpreter mv state) compiler-instruction) params)))))
+(defn resolve-labels [params state] (map (fn [k] (get state k k)) params))
+
+(defn compiler-instruction? [instruction] (= instruction :label))
+
+(defn interpret-one [mv]
+  (fn [state [instruction & args]]
+    ;;(println instruction state (cons mv (resolve-labels args state)))
+    (if (compiler-instruction? instruction)
+      (apply ((compiler-interpreter mv state) instruction) args)
+      (apply ((instruction-to-asm state) instruction) (cons mv (resolve-labels args state)))
+        )))
+
+
+;;(instruction-to-asm :localvar)
+;;(= (into [] original) (into [] (generate-byte-code byte-code-ast)))
+
+(defn interpret [mv instructions]
+  ;(println "mv=" mv "instructions" instructions)
+  (reduce (interpret-one mv) {} instructions))
+
+
 
 (defn generate-method-byte-code [cw access name desc signature exceptions instructions]
   (let [mv (.visitMethod cw access name desc signature exceptions)]
     (.visitCode mv)
-    (interpret mv instructions {})
+    (interpret mv instructions)
     (.visitMaxs mv 0 0)
     (.visitEnd mv)))
 
@@ -137,7 +148,7 @@
 
 ; very basic regression testing:
                                         ;(def original (into [] (generate-byte-code byte-code-ast)))
-                                        ;(= (into [] original) (into [] (generate-byte-code byte-code-ast)))
+;;(= (into [] original) (into [] (generate-byte-code byte-code-ast)))
 
 
 (def byte-code-ast {
@@ -148,43 +159,38 @@
                    {:name "const__1" :type "Ljava/lang/Object;"}
                    ]
           :clinit [
-                   {:instruction :ldc :parameters ["clojure.core"]}
-                   {:instruction :ldc :parameters ["+"]}
-                   {:instruction :method :parameters [Opcodes/INVOKESTATIC "clojure/lang/RT" "var" "(Ljava/lang/String;Ljava/lang/String;)Lclojure/lang/Var;"]}
-                   {:instruction :type :parameters [Opcodes/CHECKCAST "clojure/lang/Var"]}
-                   {:instruction :field :parameters [Opcodes/PUTSTATIC "user$f2" "const__0" "Lclojure/lang/Var;"]}
-                   {:instruction :ldc :parameters [(new Long 2)]}
-                   {:instruction :method :parameters [Opcodes/INVOKESTATIC "java/lang/Long" "valueOf" "(J)Ljava/lang/Long;"]}
-                   {:instruction :field :parameters [Opcodes/PUTSTATIC "user$f2" "const__1" "Ljava/lang/Object;"]}
-                   {:instruction :instcode :parameters [(.getOpcode (Type/getType "V") Opcodes/IRETURN)]}
+                   [:ldc "clojure.core"]
+                   [:ldc "+"]
+                   [:method Opcodes/INVOKESTATIC "clojure/lang/RT" "var" "(Ljava/lang/String;Ljava/lang/String;)Lclojure/lang/Var;"]
+                   [:type Opcodes/CHECKCAST "clojure/lang/Var"]
+                   [:field Opcodes/PUTSTATIC "user$f2" "const__0" "Lclojure/lang/Var;"]
+                   [:ldc (new Long 2)]
+                   [:method Opcodes/INVOKESTATIC "java/lang/Long" "valueOf" "(J)Ljava/lang/Long;"]
+                   [:field Opcodes/PUTSTATIC "user$f2" "const__1" "Ljava/lang/Object;"]
+                   [:instcode (.getOpcode (Type/getType "V") Opcodes/IRETURN)]
                    ]
           :init [
-                 {:instruction :var :parameters [Opcodes/ALOAD 0]}
-                 {:instruction :method :parameters [Opcodes/INVOKESPECIAL "clojure/lang/AFunction" "<init>" "()V"]}
-                 {:instruction :instcode :parameters [(.getOpcode (Type/getType "V") Opcodes/IRETURN)]}
+                 [:var Opcodes/ALOAD 0]
+                 [:method Opcodes/INVOKESPECIAL "clojure/lang/AFunction" "<init>" "()V"]
+                 [:instcode (.getOpcode (Type/getType "V") Opcodes/IRETURN)]
                  ]
           :methods [
                     {:name "invoke"
                      :desc "(Ljava/lang/Object;)Ljava/lang/Object;"
                      :exceptions (into-array String '())
-                     :instructions [{:compiler-instruction :let
-                                     :parameters [[{:var "looplabel" :function {:instruction :mark}}]
-                                                  [
-                                                         {:instruction :var :parameters [(.getOpcode (Type/getType java.lang.Object) Opcodes/ILOAD) 1]}
-                                                         {:instruction :instcode :parameters [Opcodes/ACONST_NULL]}
-                                                         {:instruction :var :parameters [(.getOpcode (Type/getType java.lang.Object) Opcodes/ISTORE) 1]}
-                                                         {:instruction :ldc :parameters [(new Long 2)]}
-                                                         {:instruction :method :parameters [ Opcodes/INVOKESTATIC "clojure/lang/Numbers" "add" "(Ljava/lang/Object;J)Ljava/lang/Number;"]}
-                                                         {:compiler-instruction :let
-                                                          :parameters [[ {:var "end" :function {:instruction :mark}}]
-                                                                       [{:instruction :localvar :parameters ["this" "Ljava/lang/Object;" nil '(label "looplabel") '(label "end") 0]}
-                                                                        {:instruction :localvar :parameters ["x" "Ljava/lang/Object;" nil '(label "looplabel") '(label "end") 1]}
-                                                                        ]]}
-                                                         {:instruction :instcode :parameters [(.getOpcode (Type/getType java.lang.Object) Opcodes/IRETURN)]}
-                                                         ]
-                                                  ]
-                                     }
+                     :instructions [
+                                    [:label "@looplabel"]
+                                    [:var (.getOpcode (Type/getType java.lang.Object) Opcodes/ILOAD) 1]
+                                    [:instcode Opcodes/ACONST_NULL]
+                                    [:var (.getOpcode (Type/getType java.lang.Object) Opcodes/ISTORE) 1]
+                                    [:ldc (new Long 2)]
+                                    [:method Opcodes/INVOKESTATIC "clojure/lang/Numbers" "add" "(Ljava/lang/Object;J)Ljava/lang/Number;"]
+                                    [:label "@end"]
+                                    [:localvar "this" "Ljava/lang/Object;" nil "@looplabel" "@end" 0]
+                                    [:localvar "x" "Ljava/lang/Object;" nil "@looplabel" "@end" 1]
+                                    [:instcode (.getOpcode (Type/getType java.lang.Object) Opcodes/IRETURN)]
                                     ]
+
                      }
 
                    ]
