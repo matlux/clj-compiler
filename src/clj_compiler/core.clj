@@ -77,7 +77,11 @@
                          :localvar (fn [mv name desc signature start end index] (.visitLocalVariable mv name desc signature start end index) state)
                          :type (fn [mv opcode type] (.visitTypeInsn mv opcode type) state)
                          :field (fn [mv opcode owner name desc] (.visitFieldInsn mv opcode owner name desc) state)
-
+                         :jump (fn [mv opcode label] ;(println mv opcode label)
+                                 (if (= (type label) clojure.asm.Label)
+                                   (do (.visitJumpInsn mv opcode label) state)
+                                   (let [newlabel (new Label)] (.visitJumpInsn mv opcode newlabel) (merge state {label newlabel}))))
+                         :pop (fn [mv] (.visitInsn mv Opcodes/POP) state)
                          })
 (defn compiler-interpreter [mv state] {
 
@@ -95,7 +99,7 @@
 
 (defn interpret-one [mv]
   (fn [state [instruction & args]]
-    ;;(println instruction state (cons mv (resolve-labels args state)))
+    ;(println instruction state)
     (if (compiler-instruction? instruction)
       (apply ((compiler-interpreter mv state) instruction) args)
       (apply ((instruction-to-asm state) instruction) (cons mv (resolve-labels args state)))
@@ -103,7 +107,7 @@
 
 
 ;;(instruction-to-asm :localvar)
-;;(= (into [] original) (into [] (generate-byte-code byte-code-ast)))
+;;(= (into [] original) (into [] (generate-byte-code byte-code-ast2)))
 
 (defn interpret [mv instructions]
   ;(println "mv=" mv "instructions" instructions)
@@ -148,7 +152,7 @@
 
 ; very basic regression testing:
                                         ;(def original (into [] (generate-byte-code byte-code-ast)))
-;;(= (into [] original) (into [] (generate-byte-code byte-code-ast)))
+;;(= (into [] original) (into [] (generate-byte-code byte-code-ast2)))
 
 
 (def byte-code-ast {
@@ -197,14 +201,73 @@
 
                     })
 
+(def byte-code-ast2 {
+          :classname "user$f2"
+          :super "clojure/lang/AFunction"
+          :fields [
+                   {:name "const__0" :type "Lclojure/lang/Var;"}
+                   {:name "const__1" :type "Ljava/lang/Object;"}
+                   ]
+          :clinit [
+                   [:ldc "clojure.core"]
+                   [:ldc "+"]
+                   [:method Opcodes/INVOKESTATIC "clojure/lang/RT" "var" "(Ljava/lang/String;Ljava/lang/String;)Lclojure/lang/Var;"]
+                   [:type Opcodes/CHECKCAST "clojure/lang/Var"]
+                   [:field Opcodes/PUTSTATIC "user$f2" "const__0" "Lclojure/lang/Var;"]
+                   [:ldc (new Long 2)]
+                   [:method Opcodes/INVOKESTATIC "java/lang/Long" "valueOf" "(J)Ljava/lang/Long;"]
+                   [:field Opcodes/PUTSTATIC "user$f2" "const__1" "Ljava/lang/Object;"]
+                   [:instcode (.getOpcode (Type/getType "V") Opcodes/IRETURN)]
+                   ]
+          :init [
+                 [:var Opcodes/ALOAD 0]
+                 [:method Opcodes/INVOKESPECIAL "clojure/lang/AFunction" "<init>" "()V"]
+                 [:instcode (.getOpcode (Type/getType "V") Opcodes/IRETURN)]
+                 ]
+          :methods [
+                    {:name "invoke"
+                     :desc "(Ljava/lang/Object;)Ljava/lang/Object;"
+                     :exceptions (into-array String '())
+                     :instructions [
+                                    [:label "@looplabel"]
+                                    [:var (.getOpcode (Type/getType java.lang.Object) Opcodes/ILOAD) 1]
+                                    [:instcode Opcodes/LCONST_1]
+                                    [:method Opcodes/INVOKESTATIC "clojure/lang/Numbers" "lt" "(Ljava/lang/Object;J)Z"]
+                                    [:jump Opcodes/IFEQ "@thenlabel" ]
+                                    [:var (.getOpcode (Type/getType java.lang.Object) Opcodes/ILOAD) 1]
+                                    [:instcode Opcodes/ACONST_NULL]
+                                    [:var (.getOpcode (Type/getType java.lang.Object) Opcodes/ISTORE) 1]
+                                    [:jump Opcodes/GOTO "@end" ]
+                                    [:pop]
+                                    [:label "@thenlabel"]
+                                    [:var (.getOpcode (Type/getType java.lang.Object) Opcodes/ILOAD) 1]
+                                    [:instcode Opcodes/ACONST_NULL]
+                                    [:var (.getOpcode (Type/getType java.lang.Object) Opcodes/ISTORE) 1]
+                                    [:ldc (new Long 2)]
+                                    [:method Opcodes/INVOKESTATIC "clojure/lang/Numbers" "add" "(Ljava/lang/Object;J)Ljava/lang/Number;"]
+                                    [:label "@end"]
+                                    [:localvar "this" "Ljava/lang/Object;" nil "@looplabel" "@end" 0]
+                                    [:localvar "x" "Ljava/lang/Object;" nil "@looplabel" "@end" 1]
+                                    [:instcode (.getOpcode (Type/getType java.lang.Object) Opcodes/IRETURN)]
+                                    ]
+
+                     }
+
+                   ]
+
+                    })
+
+
+
+
 (into [] (generate-byte-code byte-code-ast))
 
 (def source-txt "(fn* ([x] (+ x 2)))")
 (def classloader (.getContextClassLoader (Thread/currentThread)))
 
-(defn load-test-function [] (.defineClass classloader "user$f2" (generate-byte-code nil) source-txt))
+(defn load-test-function [] (.defineClass classloader "user$f2" (generate-byte-code byte-code-ast2) source-txt))
 
-(defn run-test-function [] ((.newInstance (.loadClass classloader "user$f2")) 4))
+(defn run-test-function [] ((.newInstance (.loadClass classloader "user$f2")) 0))
 
 ;(pprint (to-hex (generate-byte-code byte-code-ast)))
 
@@ -219,24 +282,7 @@
 (comment
 
 ;; This is just for test
-(def test-instructions [{:compiler-instruction :let
-                                     :parameters [[{:var "looplabel" :function {:instruction :mark}} {:var "looplabel2" :function {:instruction :mark}}]
-                                                  [
-                                                         {:instruction :var :parameters [(.getOpcode (Type/getType java.lang.Object) Opcodes/ILOAD) 1]}
-                                                         {:instruction :instcode :parameters [Opcodes/ACONST_NULL]}
-                                                         {:instruction :var :parameters [(.getOpcode (Type/getType java.lang.Object) Opcodes/ISTORE) 1]}
-                                                         {:instruction :ldc :parameters [(new Long 2)]}
-                                                         {:instruction :method :parameters [ Opcodes/INVOKESTATIC "clojure/lang/Numbers" "add" "(Ljava/lang/Object;J)Ljava/lang/Number;"]}
-                                                         {:compiler-instruction :let
-                                                          :parameters [[ {:var "end" :function {:instruction :mark}}]
-                                                                       [{:instruction :localvar :parameters ["this" "Ljava/lang/Object;" nil '(label "looplabel") '(label "end") 0]}
-                                                                        {:instruction :localvar :parameters ["x" "Ljava/lang/Object;" nil '(label "looplabel") '(label "end") 1]}
-                                                                        ]]}
-                                                         {:instruction :instcode :parameters [(.getOpcode (Type/getType java.lang.Object) Opcodes/IRETURN)]}
-                                                         ]
-                                                  ]
-                                     }
-                                    ])
+
 
 
 ;(first (interpret mv-mock test-instructions {}))
