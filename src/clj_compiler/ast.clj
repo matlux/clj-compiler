@@ -351,3 +351,9 @@
 (defn simplify-fn* [& params]
   ;; do we have a name?
   )
+
+;; examples
+
+(comment
+(pprint (parse-form '(fn foo [x] (if (< x 1) x (+ x 2)) (+ 2 3))))
+  )
