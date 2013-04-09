@@ -54,7 +54,7 @@
   (result-type [this] (result-type (last exprs)))
   #_(unbound []))
 
-(defn do-expr [exprs] (assoc (DoExpr. exprs) :type :DoExpr))
+(defn do-expr [exprs] (assoc (DoExpr. exprs) :expr-type :DoExpr))
 
 (defrecord LetOneExpr [sym val body]
   Expr
@@ -127,12 +127,12 @@
      (map #(unbound % (conj? local-symbols name?)) (conj? arrities var-args)))))
 
 (defn fn-expr [name arrities]
-  (assoc (FnExpr. name arrities) :type :FnExpr))
+  (assoc (FnExpr. name arrities) :expr-type :FnExpr))
 
 (defrecord InvokeExpr [f args])
 
 (defn invoke-expr [f args]
-  (assoc (InvokeExpr. f args) :type :InvokeExpr))
+  (assoc (InvokeExpr. f args) :expr-type :InvokeExpr))
 
 (defn let-one-expr
   "When compiling to bytecode the symbol becomes irrelevant, the local index is more
@@ -147,7 +147,7 @@
     :class (type literal)))
 
 (defn if-expr [test then else]
-  (assoc (IfExpr. test then else) :type :IfExpr))
+  (assoc (IfExpr. test then else) :expr-type :IfExpr))
 
 ;; step 1, fully macro-expand form
 ;; step 2, add do blocks where required
