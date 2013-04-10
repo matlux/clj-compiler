@@ -27,6 +27,7 @@
 
 (defprotocol Expr
   (result-type [this])
+  (resolve-symbols [this lookup])
   ;;(unbound [this local-symbols])
   ;; (flatten-lambdas [this])
   ;; (add-types [this] (assoc this :result-type (result-type this)))
@@ -40,6 +41,9 @@
   Expr
   (result-type [this]
     (common-types (result-type (:then this)) (result-type (:else this))))
+  (resolve-symbols [this lookup]
+    )
+
   #_(flatten-lambdas [this]
     [(concat )
      (IfExpr. nil nil nil)]
@@ -149,10 +153,22 @@
 (defn if-expr [test then else]
   (assoc (IfExpr. test then else) :expr-type :IfExpr))
 
+(defn my-walk [inner outer form]
+  (cond
+   (list? form) (outer (apply list (map inner form)))
+   (instance? clojure.lang.IMapEntry form) (outer (vec (map inner form)))
+   (seq? form) (outer (doall (map inner form)))
+   (map? form) (outer (into form (map inner form)))
+   (coll? form) (outer (into (empty form) (map inner form)))
+   :else (outer form)))
+
 ;; step 1, fully macro-expand form
 ;; step 2, add do blocks where required
 ;; processing tree becomes easier
 ;; act on a fully macro-expanded form
+
+(defn prewalk-expr [f ast]
+  (into ast (map (fn [[k v]] [k (f v)]) ast)))
 
 (declare ast)
 (declare parse-form)
@@ -195,8 +211,6 @@
 
 #_(def require-do? multiple?)
 
-
-
 (defn parse-let* [bindings & exprs]
   (if (empty? bindings)
     (apply parse-do exprs)
@@ -218,10 +232,18 @@
     (apply (parsers f) params)
     (invoke-expr (parse-form f) (map parse-form params))))
 
+(defn hash-map? [m] (instance? clojure.lang.PersistentHashMap m))
+(defn array-map? [m] (instance? clojure.lang.PersistentArrayMap m))
+
+;; transform vectors, maps etc into function calls?
+;; embed literals?
 (defn parse-form [form]
   (let [m (macroexpand form)]
     (cond
      (and (seq? m) (not-empty m)) (apply parse-seq m)
+     (vector? m) (invoke-expr clojure.core/vector (map parse-form m))
+     (map? m)    (invoke-expr clojure.core/array-map (map parse-form (apply concat (seq m))))
+     (set? m)    (invoke-expr clojure.core/hash-set (map parse-form m))
      (coll? m) (clojure.walk/walk parse-form identity m)
      :else m)))
 
@@ -232,6 +254,17 @@
 
    ;; perform the lookup for the global symbol?
    :else               (GlobalSymbolExpr. m)))
+
+
+;; thoughts on namespaces
+;; update to namespace should be atomic
+;; co-ordinated through refs?
+
+;; namespace accessed through (dosync) mechanism
+;; lookups performed in similar manner, get latest value of map
+;; can update namespace in neat transactional manner
+;; whats the effect? when performing symbol resolution pass in 'state of world'
+
 
 ;; step 1 build simple AST
 ;; step 2 resolve symbols
@@ -244,7 +277,7 @@
 
 (defn resolve-symbols
   "Run through the AST resolving local symbols to Global, Var, Local or Unresolvable"
-  [ast lexical-symbols]
+  [ast lookup]
 
   )
 
@@ -260,11 +293,15 @@
 ; typing is two things, returning result type and annotating
 ;; LetOneExpr ... gets
 
+
 (defn type-ast
   "scoped is a map of lexical scoped symbols to types - is it neccessary?"
-  [ast scoped]
+  [ast]
 
   )
+
+(defn index-ast [ast])
+
 
 #_(defn ast
   "Transform a form into a simple AST representation consisting of the following types:
