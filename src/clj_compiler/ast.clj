@@ -11,7 +11,19 @@
     form
     (walk (partial prewalk-form f) identity (f form))))
 
+;; have a method called id-local-symbols, returns form + count
+;; method to remove-shadowing
+;; given current content, increment by adding let depth?
 ;; output must be syntactically valid
+;; each fn expr tags the closures?
+;; id each local symbol, no issue with shadowing
+;; each function needs to calculate its set of closures before flatten
+;; types not required at the moment, just becomes a list of symbols
+;; pass in a map of symbols->types returns set of symbols used in Fn
+;; use a list, argument order becomes important
+
+;; cost of thread local lookup, which is a stack
+;; whats the result-type of a lambda?
 
 (defn to-bytecode
   "Return a map of sym -> lambda forms to compile"
@@ -25,9 +37,19 @@
 (defn map-vals [f m]
   (apply assoc m (interleave (keys m) (map f (vals m)))))
 
+;;
+
 (defprotocol Expr
   (result-type [this])
-  (resolve-symbols [this lookup])
+  (add-types [this locals global-lookup]
+    "locals - a map of symbol -> type
+     globals - "
+    )
+  (resolve-symbols [this lookup]
+    "symbols are resolved to local, closure or global,
+     global symbols are resolved to vars, dynamic vars can only
+     yield object as their type"
+    )
   ;;(unbound [this local-symbols])
   ;; (flatten-lambdas [this])
   ;; (add-types [this] (assoc this :result-type (result-type this)))
@@ -75,10 +97,28 @@
 
 (defrecord recur-expr [])
 
-(defrecord LocalSymbolExpr [symbol]
+(defrecord SymbolExpr [symbol source result-type]
   Expr
   #_(unbound [{:keys [symbol]} local-symbols]
-    (if (contains? local-symbols) #{} #{symbol})))
+      (if (contains? local-symbols) #{} #{symbol})))
+
+(defn symbol-expr
+  "source-type is one of: :namespace :param :let :closure"
+  [symbol source result-type]
+  (SymbolExpr. source result-type))
+
+(defrecord ParamExpr [symbol])
+
+;; a symbol has different sources:
+;; 1. Namespace
+;; 2. Param
+;; 3. Let
+;; 4. Closure
+
+(defn param-expr [symbol]
+  (assoc (ParamExpr. symbol)
+    :meta (meta symbol)
+    :type (get (meta symbol) :tag Object)))
 
 (defrecord GlobalSymbolExpr [symbol namespace]
   )
@@ -173,50 +213,94 @@
 (declare ast)
 (declare parse-form)
 
-(defn fn-ast [form]
+(defn fn-ast [form])
 
-  )
+(def ^dynamic *resolver* resolve)
 
-(defn parse-do [& exprs]
+(defn parse-do [locals & exprs]
   (cond
    (empty? exprs) nil
-   (empty? (rest exprs)) (parse-form (first exprs))
-   :else (do-expr (map parse-form exprs))))
+   (empty? (rest exprs)) (parse-form locals (first exprs))
+   :else (let [parsed (map (partial parse-form locals) exprs)]
+           {:type :do-expr
+            :exprs parsed
+            :result-type (:result-type (last parsed))
+            })))
 
-(defn let-ast [[bindings body] lexical-symbols]
-  (if (empty? bindings)
-    (ast (cons 'do body) lexical-symbols)
-    (let [[sym val & others] bindings
-          expr (let-ast [others body] (conj lexical-symbols sym))]
-      (let-one-expr sym (ast val lexical-symbols) expr))))
+(defn parse-if [locals test then & else]
+  (let [[test-ast then-ast else-ast]
+          (map (partial parse-form locals) [test then (first else)])]
+    {:type :if-expr
+     :test test-ast
+     :then then-ast
+     :else else-ast
+     :result-type (common-types (:result-type then-ast) (:result-type else-ast))
+     }))
 
-(defn parse-if [test then & else]
-  (if-expr (parse-form test) (parse-form then) (parse-form (first else))))
+;; need to add bindings to locals
 
-(defn parse-fn* [& params]
-  (letfn [(with-do [args & bodies]
-            (list args (apply parse-do bodies)))
+(defn make-map [f coll] (zipmap coll (map f coll)))
 
+;; attach block of closures
+;; at a function block move all locals to closures
+;; when building locals track their type
+;; each expression contains a set of used locals and used closures...
+
+;; have a block to parse a single function
+;; names get transformed into this expressions
+
+;; if function name specified add it to locals block
+(defn parse-single-fn [locals args & exprs]
+  (let [arg-type (fn [sym] (or (:tag (meta sym)) Object))
+        typed-args (map vector args (map arg-type args))
+        body (apply parse-do (into locals typed-args) exprs)]
+    {:type :single-fn-expr
+     :args typed-args
+     :body body
+     :used (apply dissoc (:used body) args)}))
+
+(defn parse-fn* [locals & params]
+  (let [arrities ]
+
+    )
+  (letfn [(arg-type [sym] (or (:tag (meta sym)) Object))
+          (single-arrity [[args & exprs]]
+            {:args (vec (fn [sym] {:symbol sym :type (arg-type sym)}) params)
+             :body (apply parse-do (merge locals (make-map param-type params)) exprs)})
           (bodies [params]
             (if (vector? (first params))
-              (list (apply with-do params))
-              (map (partial apply with-do) params)
+              (vector (single-arrity params))
+              (vec (map single-arrity params))
               ))]
+    (apply assoc
+           {:type :fn-expr
+            :result-type clojure.lang.Fn
+            :used-locals #{}
+            :used-closures #{}
+             }
+           (if (symbol? (first params))
+             [:name (first params) :arrities (bodies (rest params))]
+             [:arrities (bodies params)]))))
 
-    (if (symbol? (first params))
-      (fn-expr (first params) (bodies (rest params)))
-      (fn-expr nil (bodies params)))))
-
-#_(defn multiple? [coll] (not-empty? (rest coll)))
-
-#_(def require-do? multiple?)
-
-(defn parse-let* [bindings & exprs]
+(defn parse-let* [locals bindings & exprs]
   (if (empty? bindings)
-    (apply parse-do exprs)
-    (let [[sym val & rst] bindings]
-      (LetOneExpr. sym (parse-form val)
-        (apply parse-let* rst exprs)))))
+    (apply parse-do locals exprs)
+    (let [[sym val & rst] bindings
+          value (parse-form locals val)
+          new-locals (assoc locals sym (:result-type value))
+          body (apply parse-let* new-locals rst exprs)]
+      {:type :let-one-expr
+       :symbol sym
+       :value value
+       :expr body
+       :result-type (:result-type body)})))
+
+(defn parse-symbol [locals symbol]
+  (if (contains? locals symbol)
+    {:type :local-symbol-expr
+     :symbol symbol
+     :result-type (locals symbol)}
+    {:type :global-symbol-expr}))
 
 (def parsers
   {'do parse-do
@@ -227,17 +311,25 @@
    ;; 'loop or 'loop*;; TODO
    })
 
-(defn parse-seq [f & params]
+(defn parse-seq [resolver locals f & params]
   (if (contains? parsers f)
-    (apply (parsers f) params)
-    (invoke-expr (parse-form f) (map parse-form params))))
+    (apply (parsers f) resolver locals params)
+    (let [r (partial parse-form resolver locals)]
+      (invoke-expr (r f) (map r params)))))
 
 (defn hash-map? [m] (instance? clojure.lang.PersistentHashMap m))
 (defn array-map? [m] (instance? clojure.lang.PersistentArrayMap m))
 
 ;; transform vectors, maps etc into function calls?
 ;; embed literals?
-(defn parse-form [form]
+;; pass maps through, or modify function
+
+(defn ast [resolver form]
+  (letfn [(parse-form [locals form]
+            )
+         ]
+
+    )
   (let [m (macroexpand form)]
     (cond
      (and (seq? m) (not-empty m)) (apply parse-seq m)
