@@ -260,27 +260,21 @@
      :used (apply dissoc (:used body) args)}))
 
 (defn parse-fn* [locals & params]
-  (let [arrities ]
-
-    )
-  (letfn [(arg-type [sym] (or (:tag (meta sym)) Object))
-          (single-arrity [[args & exprs]]
-            {:args (vec (fn [sym] {:symbol sym :type (arg-type sym)}) params)
-             :body (apply parse-do (merge locals (make-map param-type params)) exprs)})
-          (bodies [params]
-            (if (vector? (first params))
-              (vector (single-arrity params))
-              (vec (map single-arrity params))
-              ))]
-    (apply assoc
-           {:type :fn-expr
-            :result-type clojure.lang.Fn
-            :used-locals #{}
-            :used-closures #{}
-             }
-           (if (symbol? (first params))
-             [:name (first params) :arrities (bodies (rest params))]
-             [:arrities (bodies params)]))))
+  (letfn [(parse2 [locals & arrities]
+            (let [bodies (map (partial apply parse-single-fn) arrities)]
+              {:type :fn-expr
+               :arrities bodies
+               :used (apply merge (map :used bodies))}))
+          (parse1 [locals & arrities]
+            (apply parse2 locals )
+              (if (vector? (first arrities))
+                (list arrities)
+                arrities))]
+    (if (symbol? (first params))
+      (-> (apply parse1 (assoc locals (first params) :this) (rest params))
+          (update-in [:used] disj (first params))
+          (assoc :name (first params)))
+      (apply parse1 locals params))))
 
 (defn parse-let* [locals bindings & exprs]
   (if (empty? bindings)
