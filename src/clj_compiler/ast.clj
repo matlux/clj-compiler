@@ -142,29 +142,37 @@
    'if parse-if
    'fn* parse-fn*
    'let* parse-let*
+   '. parse-dot
    'quote #(QuoteExpr. %&)
    ;; 'loop or 'loop*;; TODO
    })
 
+;;
+;; only need to cast at last possible point in time
+(defn fn-result-type
+  "Given the function form with argument constraints fundamental result-type"
+  [fnform & arg-types]
+  Object)
 
+;; symbols are resolved to global or local
 ;; what about the case where a var (static or dynamic) or a java method is invoked?
 ;; need to disabiguate those cases
 (defn parse-invoke-expr [locals f & args]
   (enrich-map
    {:type :invoke-expr
-    :f (parse-form f)
-    :args (parse-form args)}
+    :f (parse-form locals f)
+    :args (parse-form locals args)}
    :result-type
    ([f args]
-      (let [rt (:result-type f)]
+      (if-let [rt (:result-type f)]
         (cond
          (fn? rt) (apply rt (map :result-type args))
-         :else Object)))))
+         :else Object)
+        Object
+        ))))
 
 (defn parse-seq [locals f & params]
-  (if (contains? parsers f)
-    (apply (parsers f) locals params)
-    (apply parse-invoke-expr params)))
+  (apply (or (parsers f) parse-invoke-expr) locals params))
 
 (defn hash-map? [m] (instance? clojure.lang.PersistentHashMap m))
 (defn array-map? [m] (instance? clojure.lang.PersistentArrayMap m))
