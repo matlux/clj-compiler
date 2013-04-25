@@ -147,8 +147,23 @@
    ;; 'loop or 'loop*;; TODO
    })
 
+;; execute with a value and a type, or undefined and a type
+;; how does if work?
+;; test returns a truthy value or 'undefined'
+;; determines which branch to execute or both of them
+
+;; is Nil a type?
+
+;; checks on types can be properly handled
+
+
+;; transform a fn-form into a type-function
+;; if blocks can be re-written
 ;;
 ;; only need to cast at last possible point in time
+
+;; use polymorphic dispatch
+;; given a map of locals to
 (defn fn-result-type
   "Given the function form with argument constraints fundamental result-type"
   [fnform & arg-types]
