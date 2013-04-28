@@ -1,4 +1,5 @@
-(ns clj-compiler.core)
+(ns clj-compiler.core
+  (:use clj-compiler.ast))
 
 (import '[clojure.asm ClassWriter])
 (import '[clojure.asm ClassVisitor])
@@ -278,17 +279,25 @@
 ;(first (into []  (Type/getArgumentTypes "(Ljava/lang/Object;J)Ljava/lang/Number;")))
 ;(new Method "add" (Type/getReturnType "(Ljava/lang/Object;J)Ljava/lang/Number;") (Type/getArgumentTypes "(Ljava/lang/Object;J)Ljava/lang/Number;"))
 
-(defrecord ClassExpr. [name constructor-params arrities])
+(defn convert-class-expr-to-byte-code [class-expr]
+  class-expr)
+
+(defn convert-to-byte-code-ast [flatten-class-expr]
+  (map convert-class-expr-to-byte-code flatten-class-expr))
+
+
 
 (def inner-class-expr {:expr-type :ClassExpr
-    :constructor-params [['x Object]]
+    :constructor-params [{:expr-type :LocalSymbolDeclExpr :symbol "x" :arg-type "Ljava/lang/Object;"  }]
     :class-name "inner"
-    :arrities ['([{:expr-type :LocalSymbolDeclExpr :symbol "y"}]
+    :arrities ['([{:expr-type :LocalSymbolDeclExpr :symbol "y" :arg-type "Ljava/lang/Object;" }]
                    {:expr-type :InvokeExpr
-                    :f {:expr-type :GlobalSymbolExpr :symbol clojure.core/+},
+                    :f {:expr-type :GlobalSymbolExpr :symbol "clojure.core/+"},
                     :args (
-                           {:expr-type :ClassSymbolUseExpr :symbol "x" }
-                           {:expr-type :LocalSymbolDeclExpr :symbol "y"})})]
+                           {:expr-type :ClassSymbolUseExpr :symbol "x" :arg-type "Ljava/lang/Object;" }
+                           {:expr-type :LocalSymbolDeclExpr :symbol "y" :arg-type "Ljava/lang/Object;" }
+                           )
+                    :return-type "Ljava/lang/Object;"})]
 
     })
 
@@ -297,15 +306,41 @@
     :constructor-params ()
     :class-name "outer"
     :arrities [
-               '([{:expr-type :LocalSymbolDeclExpr :symbol "x" }]
-                   {:expr-type :ContructExpr :name "inner" :params [{:expr-type :LocalSymbolDeclExpr :symbol "x" }]})]
+               '([{:expr-type :LocalSymbolDeclExpr :symbol "x" :arg-type "Ljava/lang/Object;"  }]
+                   {:expr-type :ContructExpr :name "inner" :params [{:expr-type :LocalSymbolDeclExpr :symbol "x" :arg-type "Ljava/lang/Object;" }]})]
 
 
                        })
 
 (def class-expr-vec [inner-class-expr outer-class-expr])
 
+
 (comment
+
+  (pprint (let [{cons-params :constructor-params class-name :class-name arrities :arrities} inner-class-expr
+                ]
+            (letfn [(f [form] form)
+                    (get-return-type [{return-type :return-type}] return-type)
+                    (get-instructions [invoke-expr]
+                      (let [{type :expr-type f :f args :args return-type :return-type} invoke-expr]
+                        invoke-expr))
+                    (get-method-desc [params return]  (apply str  (concat "(" (map (fn [{arg-type :arg-type}] arg-type) params) ")" return)))
+                    (convert-arrity [[params expr]] {:name "invoke"
+                                                     :desc (get-method-desc params (get-return-type expr))
+                                                     :exceptions (into-array String '())
+                                                     :instructions [(get-instructions expr)]}
+                      )]
+              ;(map convert-arrity arrities)
+              ;
+
+              {:classname class-name
+               :super "clojure/lang/AFunction"
+               :fields []
+               :clinit []
+               :init []
+               :methods [(convert-arrity (first arrities))]}
+
+              )))
 
 ;;example of target flatten-lambdas result
 
@@ -313,7 +348,7 @@
 
 
 
-
+(convert-class-expr-to-byte-code inner-class-expr)
 
 
 
