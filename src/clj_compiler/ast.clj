@@ -362,5 +362,6 @@
 ;; examples
 
 (comment
-(pprint (parse-form '(fn foo [x] (if (< x 1) x (+ x 2)) (+ 2 3))))
+  (pprint (parse-form '(fn foo [x] (if (< x 1) x (+ x 2)) (+ 2 3))))
+  (pprint (parse-form '(defn f14 [x] (fn [y] (+ x y)))))
   )

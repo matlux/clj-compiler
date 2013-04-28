@@ -278,26 +278,66 @@
 ;(first (into []  (Type/getArgumentTypes "(Ljava/lang/Object;J)Ljava/lang/Number;")))
 ;(new Method "add" (Type/getReturnType "(Ljava/lang/Object;J)Ljava/lang/Number;") (Type/getArgumentTypes "(Ljava/lang/Object;J)Ljava/lang/Number;"))
 
+(defrecord ClassExpr. [name constructor-params arrities])
+
+(def inner-class-expr {:expr-type :ClassExpr
+    :constructor-params [['x Object]]
+    :class-name "inner"
+    :arrities ['([{:expr-type :LocalSymbolDeclExpr :symbol "y"}]
+                   {:expr-type :InvokeExpr
+                    :f {:expr-type :GlobalSymbolExpr :symbol clojure.core/+},
+                    :args (
+                           {:expr-type :ClassSymbolUseExpr :symbol "x" }
+                           {:expr-type :LocalSymbolDeclExpr :symbol "y"})})]
+
+    })
+
+(def outer-class-expr {
+    :expr-type :ClassExpr
+    :constructor-params ()
+    :class-name "outer"
+    :arrities [
+               '([{:expr-type :LocalSymbolDeclExpr :symbol "x" }]
+                   {:expr-type :ContructExpr :name "inner" :params [{:expr-type :LocalSymbolDeclExpr :symbol "x" }]})]
+
+
+                       })
+
+(def class-expr-vec [inner-class-expr outer-class-expr])
 
 (comment
+
+;;example of target flatten-lambdas result
+
+(use 'clj-compiler.ast)
+
+
+
+
+
+
+
+
+
+;
 
 ;; This is just for test
 
 
 
-;(first (interpret mv-mock test-instructions {}))
+                                        ;(first (interpret mv-mock test-instructions {}))
 
 
 
-;(= (into [] original) (into [] (generate-byte-code byte-code-ast)))
-;(pprint (generate-byte-code byte-code-ast))
+                                        ;(= (into [] original) (into [] (generate-byte-code byte-code-ast)))
+                                        ;(pprint (generate-byte-code byte-code-ast))
 
-;just for test
+                                        ;just for test
 (let [{classname :classname superName :super fields :fields methods :methods} byte-code-ast] (doall
-  (for [{name :name desc :desc exceptions :exceptions instructions :instructions} methods]
-    (let [mv (.visitMethod mv-mock Opcodes/ACC_PUBLIC name desc nil exceptions)]
-      (.visitCode mv)
-      (interpret mv instructions {})))))
+                                                                                              (for [{name :name desc :desc exceptions :exceptions instructions :instructions} methods]
+                                                                                                (let [mv (.visitMethod mv-mock Opcodes/ACC_PUBLIC name desc nil exceptions)]
+                                                                                                  (.visitCode mv)
+                                                                                                  (interpret mv instructions {})))))
 
-;(map (fn [v] (if (and (list? v) (= (first v) (symbol 'label))) (label (second v) {"looplabel" -99}) v)) ["this" "Ljava/lang/Object;" nil '(label "looplabel") '(label "end") 0])
+                                        ;(map (fn [v] (if (and (list? v) (= (first v) (symbol 'label))) (label (second v) {"looplabel" -99}) v)) ["this" "Ljava/lang/Object;" nil '(label "looplabel") '(label "end") 0])
 )
