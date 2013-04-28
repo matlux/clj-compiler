@@ -51,7 +51,9 @@
 
 (defn fn-ast [form])
 
-(def ^dynamic *resolver* resolve)
+(def ^:dynamic *resolver* resolve)
+
+(def parse-dot)
 
 (defn parse-do [locals & exprs]
   (cond
@@ -137,13 +139,15 @@
      :result-type (locals symbol)}
     {:type :global-symbol-expr}))
 
+(defn parse-quote [] nil)
+
 (def parsers
   {'do parse-do
    'if parse-if
    'fn* parse-fn*
    'let* parse-let*
    '. parse-dot
-   'quote #(QuoteExpr. %&)
+   'quote parse-quote
    ;; 'loop or 'loop*;; TODO
    })
 
@@ -195,6 +199,8 @@
 ;; transform vectors, maps etc into function calls?
 ;; embed literals?
 ;; pass maps through, or modify function
+
+(defn invoke-expr [])
 
 (defn ast [resolver form]
   (letfn [(parse-form [locals form]
