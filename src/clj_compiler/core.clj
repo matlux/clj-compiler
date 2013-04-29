@@ -294,8 +294,8 @@
                    {:expr-type :InvokeExpr
                     :f {:expr-type :GlobalSymbolExpr :symbol "clojure.core/+"},
                     :args (
-                           {:expr-type :ClassSymbolUseExpr :symbol "x" :arg-type "Ljava/lang/Object;" }
-                           {:expr-type :LocalSymbolDeclExpr :symbol "y" :arg-type "Ljava/lang/Object;" }
+                           {:expr-type :ClassSymbolUseExpr :symbol "x" :arg-type "Ljava/lang/Object;" :classname "outer" }
+                           {:expr-type :LocalSymbolDeclExpr :symbol "y" :arg-type "Ljava/lang/Object;" :index 1 }
                            )
                     :return-type "Ljava/lang/Object;"})]
 
@@ -304,9 +304,9 @@
 (def outer-class-expr {
     :expr-type :ClassExpr
     :constructor-params ()
-    :class-name "outer"
+    :classname "outer"
     :arrities [
-               '([{:expr-type :LocalSymbolDeclExpr :symbol "x" :arg-type "Ljava/lang/Object;"  }]
+               '([{:expr-type :LocalSymbolDeclExpr :symbol "x" :arg-type "Ljava/lang/Object;" :index 1 }]
                    {:expr-type :ContructExpr :name "inner" :params [{:expr-type :LocalSymbolDeclExpr :symbol "x" :arg-type "Ljava/lang/Object;" }]})]
 
 
@@ -314,21 +314,31 @@
 
 (def class-expr-vec [inner-class-expr outer-class-expr])
 
+(defn get-params [{args :args}]
+  (letfn [(extract-param [{expr-type :expr-type symbol :symbol arg-type :arg-type index :index classname :classname}]
+            (cond (= expr-type :ClassSymbolUseExpr) [:field Opcodes/GETSTATIC classname symbol arg-type]
+                  (= expr-type :LocalSymbolDeclExpr) [:var (.getOpcode (Type/getType arg-type) Opcodes/ILOAD) index]))]
+    (into [] (map extract-param args))))
+
+
 
 (comment
 
-  (pprint (let [{cons-params :constructor-params class-name :class-name arrities :arrities} inner-class-expr
+(get-params (->> inner-class-expr :arrities first second))
+
+  (pprint (let [{cons-params :constructor-params class-name :classname arrities :arrities} inner-class-expr
                 ]
             (letfn [(f [form] form)
                     (get-return-type [{return-type :return-type}] return-type)
+
                     (get-instructions [invoke-expr]
                       (let [{type :expr-type f :f args :args return-type :return-type} invoke-expr]
-                        invoke-expr))
+                        (get-params invoke-expr)))
                     (get-method-desc [params return]  (apply str  (concat "(" (map (fn [{arg-type :arg-type}] arg-type) params) ")" return)))
                     (convert-arrity [[params expr]] {:name "invoke"
                                                      :desc (get-method-desc params (get-return-type expr))
                                                      :exceptions (into-array String '())
-                                                     :instructions [(get-instructions expr)]}
+                                                     :instructions (get-instructions expr)}
                       )]
               ;(map convert-arrity arrities)
               ;
