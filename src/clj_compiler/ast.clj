@@ -160,7 +160,6 @@
 
 ;; checks on types can be properly handled
 
-
 ;; transform a fn-form into a type-function
 ;; if blocks can be re-written
 ;;
@@ -168,6 +167,21 @@
 
 ;; use polymorphic dispatch
 ;; given a map of locals to
+
+;; given a parsed expression can determine a return type given inputs
+;; an input has a value AND a type, constraints can specialize types
+;; the value can be ::undefined
+
+;; persistent data structures can be reasoned about
+
+;; a function takes a list of parameters, branches on arity
+
+;; step 1, normalize form for easy analyis + branching
+;; becomes the basic AST
+;; step 2, enhance basic symbol types
+;; step 2, add type annotations to AST + symbol resolution
+
+
 (defn fn-result-type
   "Given the function form with argument constraints fundamental result-type"
   [fnform & arg-types]
